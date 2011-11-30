@@ -1,25 +1,11 @@
-"""
-Basic music theory stuff.
+"""Basic music theory stuff.
 
-It's easy to create pitches
->>> Pitch('a4')
-Pitch('a4')
->>> Pitch('as2')
-Pitch('as2')
->>> Pitch('fis6')
-Pitch('fis6')
-
-We prefer Dutch note names to using "b" to mean "flat"
->>> Pitch('ab4')
-Pitch('as4')
-
-You can augment pitches like so;
->>> Pitch('a3').augment(Interval('m3'))
-Pitch('c4')
->>> Pitch('a3').augment(Interval('A3'))
+>>> a = Pitch('a4')
+>>> b = Pitch('cis4')
+>>> b - a
+Interval('M3')
+>>> a.augment(Interval('A3'))
 Pitch('cisis4')
->>> Pitch('a3').augment(Interval('4'))
-Pitch('des4')
 
 """
 import re
@@ -28,10 +14,30 @@ from math import log
 class Pitch:
     """Represents a specific frequency and MIDI pitch number
 
+    It's easy to create pitches
+    >>> Pitch('a4')
+    Pitch('a4')
+    >>> Pitch('as2')
+    Pitch('as2')
+    >>> Pitch('fis6')
+    Pitch('fis6')
+
+    We prefer Dutch note names to using "b" to mean "flat"
+    >>> Pitch('ab4')
+    Pitch('as4')
+
+    You can augment pitches like so;
+    >>> Pitch('a3').augment(Interval('m3'))
+    Pitch('c4')
+    >>> Pitch('a3').augment(Interval('A3'))
+    Pitch('cisis4')
+    >>> Pitch('a3').augment(Interval('4'))
+    Pitch('des4')
+
     """
-    name_regex = re.compile(r"(?P<class>[A-Ga-g]|as|es)" +
+    name_regex = re.compile(r"(?P<class>as|es|[a-g])" +
                             r"(?P<accidentals>(?:es|is)*|[b#]*)" +
-                            r"(?P<octave>[0-9]+)$")
+                            r"(?P<octave>[0-9]+)$", re.IGNORECASE)
     pitch_class = None
     octave = None
     transposition = None
@@ -45,13 +51,15 @@ class Pitch:
 
         """
         # Parse the given name
+        # It helps to lowercase everything on the way in...
         match = self.name_regex.match(name)
         if not match:
             raise ValueError("Invalid pitch name")
-        self.pitch_class = match.group('class')
+        self.pitch_class = match.group('class').lower()
         self.octave = int(match.group('octave'))
-        flats = match.group('accidentals').count('es')
-        sharps = match.group('accidentals').count('is')
+        accidentals = match.group('accidentals').lower()
+        flats = accidentals.count('es') + accidentals.count('b')
+        sharps = accidentals.count('is') + accidentals.count('#')
         self.transposition = sharps - flats
         # Catch the special cases of 'as' and 'es' (one extra flat)
         if self.pitch_class == 'as' or self.pitch_class == 'es':
@@ -65,18 +73,22 @@ class Pitch:
         """Print a more human-friendly representation of the pitch
 
         This is WRONG; it should find double-sharps and double-flats and
-        use the appropriate characters!
+        use the appropriate characters! Probably there should be an external
+        function that converts a transposition to the correct sharps/flats.
+        It could also convert a string.
 
         """
         if self.transposition > 0:
             # Sharps
             accidentals = "\u266F" * self.transposition
+            # accidentals = "#" * self.transposition
         elif self.transposition < 0:
             # Flats
             accidentals = "\u266D" * (-1 * self.transposition)
+            # accidentals = "b" * (-1 * self.transposition)
         else:
             accidentals = ""
-        return self.pitch_class + accidentals + str(self.octave)
+        return self.pitch_class.upper() + accidentals + str(self.octave)
 
     @property
     def name(self):
