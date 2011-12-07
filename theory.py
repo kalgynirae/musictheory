@@ -38,33 +38,83 @@ class Pitch:
     name_regex = re.compile(r"(?P<class>as|es|[a-g])" +
                             r"(?P<accidentals>(?:es|is)*|[b#]*)" +
                             r"(?P<octave>[0-9]+)$", re.IGNORECASE)
-    pitch_class = None
-    octave = None
-    transposition = None
-    midi_pitch = None
+    PITCH_CLASS_VALUES = {
+            'c': 0,
+            'd': 2,
+            'e': 4,
+            'f': 5,
+            'g': 7,
+            'a': 9,
+            'b': 11,
+        }
+    PITCH_CLASS_NAMES = {v:n for n, v in PITCH_CLASS_VALUES.items()}
 
-    def __init__(self, name):
+    def _parse_string(string):
+        """Figure out stuff from a pitch name"""
+        match = Pitch.name_regex.match(string)
+        if not match:
+            raise ValueError("Invalid pitch name")
+        pitch_class = match.group('class').lower()
+        octave = int(match.group('octave'))
+        accidentals = match.group('accidentals').lower()
+        flats = accidentals.count('es') + accidentals.count('b')
+        sharps = accidentals.count('is') + accidentals.count('#')
+        transposition = sharps - flats
+        # Catch the special cases of 'as' and 'es' (one extra flat)
+        if pitch_class == 'as' or pitch_class == 'es':
+            transposition -= 1
+            pitch_class = pitch_class[:-1]
+        # Calculate the midi pitch value
+        midi_pitch = ((octave + 1) * 12 +
+                      Pitch.PITCH_CLASS_VALUES[pitch_class] +
+                      transposition)
+        return (midi_pitch, pitch_class, transposition, octave)
+
+    def _parse_midi_pitch(midi_pitch):
+        # Figure out how to get the correct pitch when given a key...
+        if midi_pitch % 12 in Pitch.PITCH_CLASS_NAMES:
+            pitch_class = Pitch.PITCH_CLASS_NAMES[midi_pitch % 12]
+            transposition = 0
+        elif midi_pitch % 12 - 1 in Pitch.PITCH_CLASS_NAMES:
+            pitch_class = Pitch.PITCH_CLASS_NAMES[midi_pitch % 12 - 1]
+            transposition = 1
+        octave = midi_pitch // 12 - 1
+        return (midi_pitch, pitch_class, transposition, octave)
+
+    def __init__(self, value):
         """Get a pitch by name
 
         Example pitch names:
             c4 as3 bes2 cis5 f8 eses3
 
         """
-        # Parse the given name
-        # It helps to lowercase everything on the way in...
-        match = self.name_regex.match(name)
-        if not match:
-            raise ValueError("Invalid pitch name")
-        self.pitch_class = match.group('class').lower()
-        self.octave = int(match.group('octave'))
-        accidentals = match.group('accidentals').lower()
-        flats = accidentals.count('es') + accidentals.count('b')
-        sharps = accidentals.count('is') + accidentals.count('#')
-        self.transposition = sharps - flats
-        # Catch the special cases of 'as' and 'es' (one extra flat)
-        if self.pitch_class == 'as' or self.pitch_class == 'es':
-            self.transposition -= 1
-            self.pitch_class = self.pitch_class[:-1]
+        if isinstance(value, str):
+            parse = Pitch._parse_string
+        elif isinstance(value, int):
+            parse = Pitch._parse_midi_pitch
+        (mp, pc, tr, oc) = parse(value)
+        self.midi_pitch = mp
+        self.pitch_class = pc
+        self.transposition = tr
+        self.octave = oc
+
+    def __eq__(self, other):
+        return self.midi_pitch == other.midi_pitch
+
+    def __ne__(self, other):
+        return self.midi_pitch != other.midi_pitch
+
+    def __lt__(self, other):
+        return self.midi_pitch < other.midi_pitch
+
+    def __le__(self, other):
+        return self.__lt__(other) or self.__eq__(other)
+
+    def __gt__(self, other):
+        return not self.__le__(other)
+
+    def __ge__(self, other):
+        return not self.__lt__(other)
 
     def __repr__(self):
         return "Pitch('" + self.name + "')"
@@ -110,6 +160,12 @@ class Pitch:
     def frequency(self):
         return 440.0 * (2 ** ((self.midi_pitch - 69) / 12))
 
+    def diminish(self, amount):
+        pass
+
+    def augment(self, amount):
+        pass
+
 class Interval:
     """Represents the distance between two pitches
 
@@ -117,7 +173,7 @@ class Interval:
     name_regex = re.compile(r"(?P<quality>[AMmd])(P<interval>[1-9][0-9]*)")
 
     def __init__(self, name):
-        match = self.name_regex.match(name)
+        match = Interval.name_regex.match(name)
         if match:
             self._quality = match.group(1)
             self._generic = match.group(2)
