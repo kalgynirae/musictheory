@@ -64,11 +64,7 @@ class Pitch:
         if pitch_class == 'as' or pitch_class == 'es':
             transposition -= 1
             pitch_class = pitch_class[:-1]
-        # Calculate the midi pitch value
-        midi_pitch = ((octave + 1) * 12 +
-                      Pitch.PITCH_CLASS_VALUES[pitch_class] +
-                      transposition)
-        return (midi_pitch, pitch_class, transposition, octave)
+        return (pitch_class, transposition, octave)
 
     def _parse_midi_pitch(midi_pitch):
         # Figure out how to get the correct pitch when given a key...
@@ -79,10 +75,10 @@ class Pitch:
             pitch_class = Pitch.PITCH_CLASS_NAMES[midi_pitch % 12 - 1]
             transposition = 1
         octave = midi_pitch // 12 - 1
-        return (midi_pitch, pitch_class, transposition, octave)
+        return (pitch_class, transposition, octave)
 
     def __init__(self, value):
-        """Get a pitch by name
+        """Get a pitch by name or by midi number
 
         Example pitch names:
             c4 as3 bes2 cis5 f8 eses3
@@ -92,8 +88,7 @@ class Pitch:
             parse = Pitch._parse_string
         elif isinstance(value, int):
             parse = Pitch._parse_midi_pitch
-        (mp, pc, tr, oc) = parse(value)
-        self.midi_pitch = mp
+        (pc, tr, oc) = parse(value)
         self.pitch_class = pc
         self.transposition = tr
         self.octave = oc
@@ -159,6 +154,12 @@ class Pitch:
     @property
     def frequency(self):
         return 440.0 * (2 ** ((self.midi_pitch - 69) / 12))
+
+    @property
+    def midi_pitch(self):
+        return ((self.octave + 1) * 12 +
+                Pitch.PITCH_CLASS_VALUES[self.pitch_class] +
+                self.transposition)
 
     def diminish(self, amount):
         pass
