@@ -22,7 +22,8 @@ class Pitch:
     >>> Pitch('fis6')
     Pitch('fis6')
 
-    We prefer Dutch note names to using "b" to mean "flat"
+    You can use "b" for flat and "#" for sharp, but we use the dutch
+    names internally.
     >>> Pitch('ab4')
     Pitch('as4')
 
