@@ -23,8 +23,8 @@ class Pitch:
     ('a', 4)
 
     """
-    NAME_REGEX = re.compile('(?P<class>as|es|[a-g])' +
-                            '(?P<accidentals>(?:es)*|(?:is)*|b*|#*)' +
+    NAME_REGEX = re.compile('(?P<class>as|es|[a-g])'
+                            '(?P<accidentals>(?:es)*|(?:is)*|b*|#*)'
                             '(?P<octave>[0-9]+)$', re.IGNORECASE)
     FLAT_CHAR = '\u266D'
     SHARP_CHAR = '\u266F'
@@ -55,7 +55,7 @@ class Pitch:
             else:
                 self.transposition = 0
         else:
-            raise ValueError("Invalid arguments; give name, Pitch, or " +
+            raise ValueError("Invalid arguments; give name, Pitch, or "
                              "base_pitch_id and transposition")
 
     @property
@@ -86,7 +86,8 @@ class Pitch:
         return list('cdefgab')[self.base_pitch_id % 7]
 
     def __eq__(self, other):
-        return self.midi == other.midi
+        return (self.base_pitch_id == other.base_pitch_id and
+                self.transposition == other.transposition)
 
     def __ne__(self, other):
         return self.midi != other.midi
@@ -103,8 +104,25 @@ class Pitch:
     def __ge__(self, other):
         return not self.__lt__(other)
 
+    def __add__(self, other):
+        if isinstance(other, Interval):
+            new_base_pitch_id = self.base_pitch_id + other.generic
+            new_transposition = self.transposition + other.quality
+            new_pitch = Pitch(base_pitch_id=new_base_pitch_id)
+            # Now check the interval quality
+            i = new_pitch - self
+            new_transposition = other.quality - i.quality
+            return Pitch(base_pitch_id=new_base_pitch_id,
+                         transposition=new_transposition)
+        else:
+            return NotImplemented("Second operand must be an Interval")
+
     def __sub__(self, other):
-        return Interval((other, self))
+        if isinstance(other, Pitch):
+            return Interval((other, self))
+        elif isinstance(other, Interval):
+            return NotImplemented("Intervals can't currently be subtracted"
+                                  "from pitches")
 
     def __repr__(self):
         return "Pitch('" + self.name + "')"
@@ -114,8 +132,8 @@ class Interval:
     """An interval
 
     """
-    NAME_REGEX = re.compile(r"(?P<quality>[AMmd])" +
-                            r"(?P<interval>[1-9][0-9]*)" +
+    NAME_REGEX = re.compile(r"(?P<quality>[AMmd])"
+                            r"(?P<interval>[1-9][0-9]*)"
                             r"(?P<direction>[{}{}]?)")
     ASCENDING_CHAR = '\u2191'
     DESCENDING_CHAR = '\u2193'
@@ -131,9 +149,9 @@ class Interval:
                 self.descending = False
             self.generic = (to_pitch.base_pitch_id -
                             from_pitch.base_pitch_id)
-            octaves = self.generic // 7
-            simple_generic = self.generic % 7
             actual_semitones = to_pitch.midi - from_pitch.midi
+            simple_generic = self.generic % 7
+            octaves = self.generic // 7
             size = [0, 2, 4, 5, 7, 9, 11]
             self.quality = actual_semitones - (size[simple_generic] +
                                                12 * octaves)
@@ -141,6 +159,12 @@ class Interval:
     @property
     def compound(self):
         return self.generic > 7
+
+    @property
+    def steps(self):
+        size = [0, 2, 4, 5, 7, 9, 11]
+        steps = size[self.generic % 7] + (self.generic // 7) * 12
+        return steps
 
     @property
     def name(self):
