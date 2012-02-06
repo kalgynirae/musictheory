@@ -1,0 +1,8 @@
+musictheory is a module for Python 3.
+
+Currently, it can calculate the interval between two pitches and the pitch an
+interval above another pitch.
+
+In the future, it will be able to generate chords and scales, harmonize
+melodies, and output things in LilyPond format. And maybe also some other
+things.
