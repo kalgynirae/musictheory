@@ -1,3 +1,4 @@
+from collections import namedtuple
 import re
 
 class Pitch:
@@ -23,31 +24,17 @@ class Pitch:
     ('a', 4)
 
     """
-    NAME_REGEX = re.compile('(?P<class>as|es|[a-g])'
+    NAME_REGEX = re.compile('^(?P<base>as|es|[a-g])'
                             '(?P<accidentals>(?:es)*|(?:is)*|b*|#*)'
                             '(?P<octave>[0-9]+)$', re.IGNORECASE)
     FLAT_CHAR = '\u266D'
     SHARP_CHAR = '\u266F'
 
-    def __init__(self, pitch=None, *, base_pitch_id=None, octave=None,
-                 pitch_class=None, transposition=None):
-        if isinstance(pitch, str):
-            match = Pitch.NAME_REGEX.match(pitch)
-            if not match:
-                raise ValueError("Invalid pitch name")
-            pitch_class = match.group('class').lower()
-            accidentals = match.group('accidentals').lower()
-            flats = accidentals.count('es') + accidentals.count('b')
-            sharps = accidentals.count('is') + accidentals.count('#')
-            octave = int(match.group('octave'))
-            if pitch_class == 'as' or pitch_class == 'es':
-                pitch_class = pitch_class[:-1]
-                flats += 1
-            d = {pc: n for n, pc in enumerate(list('cdefgab'))}
-            self.base_pitch_id = octave * 7 + d[pitch_class]
-            self.transposition = sharps - flats
-        elif isinstance(pitch, Pitch):
-            raise NotImplemented("Duplicating pitches is not implemented yet")
+    def __init__(self, name=None, *, base_pitch_id=None, transposition=None,
+                 pitch_class=None, octave=None):
+        if isinstance(name, str):
+            p = Pitch.parse_pitch_name(name)
+            self.base_pitch_id, self.transposition = p
         elif base_pitch_id is not None:
             self.base_pitch_id = base_pitch_id
             if transposition is not None:
@@ -55,8 +42,8 @@ class Pitch:
             else:
                 self.transposition = 0
         else:
-            raise ValueError("Invalid arguments; give name, Pitch, or "
-                             "base_pitch_id and transposition")
+            raise ValueError("Invalid arguments; give name or base_pitch_id "
+                             "and transposition")
 
     @property
     def frequency(self):
@@ -115,17 +102,50 @@ class Pitch:
             return Pitch(base_pitch_id=new_base_pitch_id,
                          transposition=new_transposition)
         else:
-            return NotImplemented("Second operand must be an Interval")
+            raise NotImplemented("Second operand must be an Interval")
 
     def __sub__(self, other):
         if isinstance(other, Pitch):
             return Interval((other, self))
         elif isinstance(other, Interval):
-            return NotImplemented("Intervals can't currently be subtracted"
+            raise NotImplemented("Intervals can't currently be subtracted "
                                   "from pitches")
 
     def __repr__(self):
         return "Pitch('" + self.name + "')"
+
+    def duplicate(self):
+        """Return a duplicate of self
+
+        >>> p = Pitch('ges4')
+        >>> d = p.duplicate()
+        >>> d == p
+        True
+        >>> d is p
+        False
+
+        """
+        return Pitch(base_pitch_id=self.base_pitch_id,
+                     transposition=self.transposition)
+
+    @staticmethod
+    def parse_pitch_name(name):
+        match = Pitch.NAME_REGEX.match(name)
+        if not match:
+            raise ValueError("Invalid pitch name")
+        accidentals = match.group('accidentals').lower()
+        flats = accidentals.count('es') + accidentals.count('b')
+        sharps = accidentals.count('is') + accidentals.count('#')
+        octave = int(match.group('octave'))
+        base_pitch = match.group('base').lower()
+        # Catch the two special cases — A-flat and E-flat
+        if base_pitch == 'as' or base_pitch == 'es':
+            base_pitch = base_pitch[:-1]
+            flats += 1
+        transposition = sharps - flats
+        d = {pitch: id for id, pitch in enumerate(list('cdefgab'))}
+        base_pitch_id = octave * 7 + d[base_pitch]
+        return (base_pitch_id, transposition)
 
 
 class Interval:
@@ -197,6 +217,29 @@ class Interval:
         return "Interval('" + self.name + "')"
 
 
+class MajorScale:
+
+    intervals = map(Interval, 'P1 M2 M2 m2 M2 M2 M2 m2'.split())
+
+    def __init__(self, start_pitch):
+        self.pitches = []
+        for interval in self.intervals:
+            self.pitches.append(start_pitch + interval)
+
+    def is_diatonic(self, pitch):
+        return pitch in self.pitches
+
+
 if __name__ == '__main__':
     import doctest
     doctest.testmod()
+    # Set up some objects for convenient testing
+    c3 = Pitch('c3')
+    c4 = Pitch('c4')
+    d4 = Pitch('d4')
+    e4 = Pitch('e4')
+    f4 = Pitch('f4')
+    g4 = Pitch('g4')
+    a4 = Pitch('a4')
+    b4 = Pitch('b4')
+    c5 = Pitch('c5')
