@@ -27,8 +27,10 @@ class Pitch:
     NAME_REGEX = re.compile('^(?P<base>as|es|[a-g])'
                             '(?P<accidentals>(?:es)*|(?:is)*|b*|#*)'
                             '(?P<octave>[0-9]+)$', re.IGNORECASE)
-    FLAT_CHAR = '\u266D'
-    SHARP_CHAR = '\u266F'
+    FLAT_CHAR = 'b'
+    SHARP_CHAR = '#'
+
+    __slots__ = ('base_pitch_id', 'octave', 'transposition')
 
     def __init__(self, name=None, *, base_pitch_id=None, transposition=None,
                  pitch_class=None, octave=None):
@@ -73,8 +75,7 @@ class Pitch:
         return list('cdefgab')[self.base_pitch_id % 7]
 
     def __eq__(self, other):
-        return (self.base_pitch_id == other.base_pitch_id and
-                self.transposition == other.transposition)
+        return self.equals(other)
 
     def __ne__(self, other):
         return self.midi != other.midi
@@ -94,11 +95,11 @@ class Pitch:
     def __add__(self, other):
         if isinstance(other, Interval):
             new_base_pitch_id = self.base_pitch_id + other.generic
-            new_transposition = self.transposition + other.quality
+            new_transposition = self.transposition + other.transposition
             new_pitch = Pitch(base_pitch_id=new_base_pitch_id)
-            # Now check the interval quality
+            # Now check the interval transposition
             i = new_pitch - self
-            new_transposition = other.quality - i.quality
+            new_transposition = other.transposition - i.transposition
             return Pitch(base_pitch_id=new_base_pitch_id,
                          transposition=new_transposition)
         else:
@@ -106,7 +107,7 @@ class Pitch:
 
     def __sub__(self, other):
         if isinstance(other, Pitch):
-            return Interval((other, self))
+            return Interval(pitches=(other, self))
         elif isinstance(other, Interval):
             raise NotImplemented("Intervals can't currently be subtracted "
                                   "from pitches")
@@ -115,18 +116,40 @@ class Pitch:
         return "Pitch('" + self.name + "')"
 
     def duplicate(self):
-        """Return a duplicate of self
-
+        """
         >>> p = Pitch('ges4')
         >>> d = p.duplicate()
         >>> d == p
         True
         >>> d is p
         False
-
         """
         return Pitch(base_pitch_id=self.base_pitch_id,
                      transposition=self.transposition)
+
+    def equals(self, other, check_octave=True):
+        """
+        >>> Pitch('dis4').equals(Pitch('dis7'))
+        False
+        >>> Pitch('dis4').equals(Pitch('dis7'), check_octave=False)
+        True
+        >>> Pitch('dis4').equals(Pitch('d4'))
+        False
+        """
+        return (self.pitch_class == other.pitch_class and
+                self.transposition == other.transposition and
+                (self.octave == other.octave or not check_octave))
+
+    def is_enharmonic(self, other):
+        """
+        >>> Pitch('c4').is_enharmonic(Pitch('deses4'))
+        True
+        >>> Pitch('c4').is_enharmonic(Pitch('bis4'))
+        False
+        >>> Pitch('c4').is_enharmonic(Pitch('bis3'))
+        True
+        """
+        return self.midi == other.midi
 
     @staticmethod
     def parse_pitch_name(name):
@@ -152,15 +175,21 @@ class Interval:
     """An interval
 
     """
-    NAME_REGEX = re.compile(r"(?P<quality>[AMmd])"
-                            r"(?P<interval>[1-9][0-9]*)"
-                            r"(?P<direction>[{}{}]?)")
-    ASCENDING_CHAR = '\u2191'
-    DESCENDING_CHAR = '\u2193'
+    NAME_REGEX = re.compile(r"(?P<direction>[+-]?)"
+                            r"(?P<quality>(?:d)*|(?:A)*|[PMm])"
+                            r"(?P<generic>[1-9][0-9]*)")
+    ASCENDING_CHAR = '+'
+    DESCENDING_CHAR = '-'
 
-    def __init__(self, pitches=None, *, generic=None, quality=None,
-                 descending=False):
-        if pitches:
+    __slots__ = ('descending', 'generic', 'transposition')
+
+    def __init__(self, name=None, *, pitches=None, generic=None,
+                 transposition=None, descending=False):
+        if name:
+            (self.generic,
+             self.transposition,
+             self.descending) = Interval.parse_interval_name(name)
+        elif pitches:
             from_pitch, to_pitch = pitches
             if from_pitch > to_pitch:
                 from_pitch, to_pitch = to_pitch, from_pitch
@@ -173,8 +202,9 @@ class Interval:
             simple_generic = self.generic % 7
             octaves = self.generic // 7
             size = [0, 2, 4, 5, 7, 9, 11]
-            self.quality = actual_semitones - (size[simple_generic] +
-                                               12 * octaves)
+            self.transposition = actual_semitones - (size[simple_generic] +
+                                                     12 * octaves)
+
 
     @property
     def compound(self):
@@ -188,38 +218,69 @@ class Interval:
 
     @property
     def name(self):
-        perfect_intervals = [0, 3, 4]
         qm = {-2: 'd', -1: 'm', 0: 'M', 1: 'A'}
         qp = {-1: 'd', 0: 'P', 1: 'A'}
-        if self.generic % 7 in perfect_intervals:
-            if self.quality in qp:
-                quality = qp[self.quality]
+        if Interval.is_perfect_interval(self.generic):
+            if self.transposition in qp:
+                quality = qp[self.transposition]
             else:
-                if self.quality < 0:
-                    quality = "d" * (-1 * self.quality)
+                if self.transposition < 0:
+                    quality = "d" * (-1 * self.transposition)
                 else:
-                    quality = "A" * self.quality
+                    quality = "A" * self.transposition
         else:
-            if self.quality in qm:
-                quality = qm[self.quality]
+            if self.transposition in qm:
+                quality = qm[self.transposition]
             else:
-                if self.quality < 0:
-                    quality = "d" * (-1 * self.quality - 1)
+                if self.transposition < 0:
+                    quality = "d" * (-1 * self.transposition - 1)
                 else:
-                    quality = "A" * self.quality
+                    quality = "A" * self.transposition
         if self.descending:
             direction = Interval.DESCENDING_CHAR
         else:
             direction = Interval.ASCENDING_CHAR
-        return quality + str(self.generic + 1) + direction
+        return direction + quality + str(self.generic + 1)
 
     def __repr__(self):
         return "Interval('" + self.name + "')"
 
+    @staticmethod
+    def is_perfect_interval(generic):
+        return generic % 7 in [0, 3, 4]
+
+    @staticmethod
+    def parse_interval_name(name):
+        match = Interval.NAME_REGEX.match(name)
+        if not match:
+            raise ValueError("Invalid interval name")
+        generic = int(match.group('generic')) - 1
+        is_perfect = Interval.is_perfect_interval(generic)
+        transposition = Interval.quality_to_transposition(match.group('quality'),
+                                                          is_perfect)
+        direction = match.group('direction')
+        descending = (direction == '-')
+        return (generic, transposition, descending)
+
+    @staticmethod
+    def quality_to_transposition(quality, is_perfect_interval=False):
+        quality_modified = quality + 'p' if is_perfect_interval else quality
+        transposition = {'dd': -3, 'd': -2, 'm': -1, 'M': 0, 'A': 1, 'AA': 2,
+                         'ddp': -2, 'dp': -1, 'Pp': 0, 'Ap': 1, 'AAp': 2}
+        try:
+            return transposition[quality_modified]
+        except KeyError:
+            if is_perfect_interval:
+                raise ValueError("{!r} is an invalid quality for a perfect "
+                                 "interval".format(quality))
+            else:
+                raise ValueError("{!r} is an invalid quality for an imperfect "
+                                 "interval".format(quality))
+
 
 class MajorScale:
 
-    intervals = map(Interval, 'P1 M2 M2 m2 M2 M2 M2 m2'.split())
+    intervals = map(Interval, 'P1 M2 M3 P4 P5 M6 M7'.split())
 
     def __init__(self, start_pitch):
         self.pitches = []
@@ -227,7 +288,18 @@ class MajorScale:
             self.pitches.append(start_pitch + interval)
 
     def is_diatonic(self, pitch):
-        return pitch in self.pitches
+        """
+        >>> MajorScale(Pitch('c4')).is_diatonic(Pitch('d5'))
+        True
+        >>> MajorScale(Pitch('b0')).is_diatonic(Pitch('ais7'))
+        True
+        >>> MajorScale(Pitch('c4')).is_diatonic(Pitch('eis3'))
+        False
+        """
+        for p in self.pitches:
+            if pitch.equals(p, check_octave=False):
+                return True
+        return False
 
 
 if __name__ == '__main__':
