@@ -93,13 +93,26 @@ class Pitch:
         return not self.__lt__(other)
 
     def __add__(self, other):
+        """
+        >>> Pitch('a4') + Interval('A3')
+        Pitch('c##5')
+        >>> Pitch('c4') + Interval('-P8')
+        Pitch('c3')
+        >>> Pitch('b#0') + Interval('-P8')
+        Pitch('b#-1')
+        """
         if isinstance(other, Interval):
-            new_base_pitch_id = self.base_pitch_id + other.generic
-            new_transposition = self.transposition + other.transposition
+            if other.descending:
+                new_base_pitch_id = self.base_pitch_id - other.generic
+            else:
+                new_base_pitch_id = self.base_pitch_id + other.generic
             new_pitch = Pitch(base_pitch_id=new_base_pitch_id)
             # Now check the interval transposition
             i = new_pitch - self
-            new_transposition = other.transposition - i.transposition
+            if other.descending:
+                new_transposition = other.transposition + i.transposition
+            else:
+                new_transposition = other.transposition - i.transposition
             return Pitch(base_pitch_id=new_base_pitch_id,
                          transposition=new_transposition)
         else:
@@ -109,8 +122,7 @@ class Pitch:
         if isinstance(other, Pitch):
             return Interval(pitches=(other, self))
         elif isinstance(other, Interval):
-            raise NotImplemented("Intervals can't currently be subtracted "
-                                  "from pitches")
+            return self.__add__(-other)
 
     def __repr__(self):
         return "Pitch('" + self.name + "')"
@@ -172,9 +184,7 @@ class Pitch:
 
 
 class Interval:
-    """An interval
 
-    """
     NAME_REGEX = re.compile(r"(?P<direction>[+-]?)"
                             r"(?P<quality>(?:d)*|(?:A)*|[PMm])"
                             r"(?P<generic>[1-9][0-9]*)")
@@ -242,8 +252,16 @@ class Interval:
             direction = Interval.ASCENDING_CHAR
         return direction + quality + str(self.generic + 1)
 
+    def __copy__(self):
+        return Interval(self.name)
+
+    def __neg__(self):
+        i = self.__copy__()
+        i.descending = not i.descending
+        return i
+
     def __repr__(self):
-        return "Interval('" + self.name + "')"
+        return "Interval({!r})".format(self.name)
 
     @staticmethod
     def is_perfect_interval(generic):
@@ -280,11 +298,11 @@ class Interval:
 
 class MajorScale:
 
-    intervals = map(Interval, 'P1 M2 M3 P4 P5 M6 M7'.split())
+    intervals = list(map(Interval, 'P1 M2 M3 P4 P5 M6 M7'.split()))
 
     def __init__(self, start_pitch):
         self.pitches = []
-        for interval in self.intervals:
+        for interval in MajorScale.intervals:
             self.pitches.append(start_pitch + interval)
 
     def is_diatonic(self, pitch):
